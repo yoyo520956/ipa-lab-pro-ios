@@ -31,14 +31,22 @@ struct StringsTab: View {
 
     private var listArea: some View {
         VStack(spacing: 0) {
-            Text("共 \(engine.result.cstrings.count) 条（__cstring / ObjC / 符号名，去重后）")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
+            HStack {
+                Text("共 \(engine.result.cstrings.count) 条（去重后）")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                NavigationLink {
+                    NetworkView(engine: engine)
+                } label: {
+                    Label("网络接口", systemImage: "network")
+                        .font(.caption.weight(.semibold))
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
 
-            TextField("搜索 URL / 域名 / 接口…", text: $query)
+            TextField("搜索字符串…", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .padding(12)
 

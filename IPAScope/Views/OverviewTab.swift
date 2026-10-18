@@ -3,13 +3,14 @@ import UIKit
 
 struct OverviewTab: View {
     @ObservedObject var engine: AnalysisEngine
-    let onPick: () -> Void
+    @Binding var showPicker: Bool
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
                     pickerCard
+                    libraryCard
                     statusCard
                     if engine.phase == .done {
                         infoCard
@@ -22,6 +23,7 @@ struct OverviewTab: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("IPA 解剖台")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear { engine.refreshImportList() }
         }
     }
 
@@ -37,15 +39,61 @@ struct OverviewTab: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Button {
-                onPick()
+                showPicker = true
             } label: {
                 Label(engine.phase == .done ? "换个文件" : "选择 IPA",
                       systemImage: "folder.badge.plus")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            Text("也可以在文件 App 里把 IPA 拷进「IPAScope」文件夹，或长按 IPA 分享到本 App")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
         }
         .cardStyle()
+    }
+
+    // MARK: - IPA 库（Documents 目录）
+
+    @ViewBuilder
+    private var libraryCard: some View {
+        if !engine.importedURLs.isEmpty {
+            SectionCard(title: "我的 IPA 库 (\(engine.importedURLs.count))", icon: "archivebox") {
+                ForEach(engine.importedURLs, id: \.absoluteString) { u in
+                    HStack(spacing: 10) {
+                        Image(systemName: "shippingbox.fill")
+                            .foregroundStyle(.blue)
+                            .font(.footnote)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(u.lastPathComponent)
+                                .font(.footnote.weight(.medium))
+                                .lineLimit(1)
+                            if engine.pickedURL == u {
+                                Text("当前分析中")
+                                    .font(.caption2)
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                        Spacer()
+                        Button {
+                            engine.openLocal(u)
+                        } label: {
+                            Image(systemName: "magnifyingglass.circle.fill")
+                                .font(.title3)
+                        }
+                        .buttonStyle(.borderless)
+                        Button(role: .destructive) {
+                            engine.deleteImported(u)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.footnote)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder

@@ -32,8 +32,10 @@ struct MachSection: Identifiable, Hashable {
 struct MachSegment: Identifiable, Hashable {
     let id: Int
     let name: String
-    let vmSize: UInt64
-    let fileSize: UInt64
+    let vmaddr: UInt64        // 段虚拟起始地址
+    let vmSize: UInt64        // 虚拟大小
+    let fileOff: UInt64       // 文件内偏移（VM→file 映射用）
+    let fileSize: UInt64      // 文件内大小（bss 段可小于 vmSize）
     let sections: [MachSection]
 }
 
@@ -42,6 +44,15 @@ struct MachDylib: Identifiable, Hashable {
     let path: String
     let weak: Bool
     var name: String { (path as NSString).lastPathComponent }
+}
+
+// MARK: - 符号（带地址，供反汇编标注）
+
+struct MachSymbol: Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let value: UInt64        // 符号虚拟地址
+    let kind: String         // "func" / "objc类" / "数据" / "未知"
 }
 
 // MARK: - 摘要信息
@@ -104,6 +115,9 @@ final class AnalysisResult {
     var methodNames: [String] = []
     var cstrings: [String] = []
     var symbols: [String] = []
+    var symbolsFull: [MachSymbol] = []      // 带地址符号（反汇编标注用）
+    var swiftSymbols: [String] = []          // 已还原的 Swift 符号
+    var textSection: MachSection?            // __text 段（反汇编入口）
     var provision: ProvisionInfo = ProvisionInfo()
     var warnings: [String] = []
 }

@@ -15,6 +15,15 @@ targets:
     platform: iOS
     sources:
       - path: IPAScope
+    info:
+      path: IPAScope/Info.plist
+      properties:
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: "IPA 安装包"
+            LSHandlerRank: "Alternate"
+            LSItemContentTypes: ["public.data"]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.qingyao.ipascope

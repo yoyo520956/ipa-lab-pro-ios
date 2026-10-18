@@ -1,98 +1,140 @@
 import SwiftUI
 
+// MARK: - 符号页：ObjC 类名 / 方法选择器 / Swift 还原符号 / Mach-O 符号表
+
 struct ClassesTab: View {
     @ObservedObject var engine: AnalysisEngine
-    @State private var mode = 0          // 0=类 1=方法 2=全部符号
-    @State private var query = ""
 
     var body: some View {
         NavigationStack {
             Group {
-                if engine.phase == .done {
-                    listArea
+                if engine.phase != .done {
+                    VStack(spacing: 12) {
+                        Image(systemName: "c.circle")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.blue.gradient)
+                        Text("导入 IPA 后可查看符号")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    emptyHint
+                    SymbolListView(engine: engine)
                 }
             }
             .navigationTitle("符号")
             .navigationBarTitleDisplayMode(.inline)
+            .background(Color(.systemGroupedBackground))
         }
     }
+}
 
-    private var emptyHint: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "c.circle")
-                .font(.system(size: 30))
-                .foregroundStyle(.tertiary)
-            Text("先在「概览」选择 IPA")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
+struct SymbolListView: View {
+    @ObservedObject var engine: AnalysisEngine
+    @State private var query = ""
+
+    private var classes: [String] { filtered(engine.result.classNames) }
+    private var methods: [String] { filtered(engine.result.methodNames) }
+    private var swiftNames: [String] { filtered(engine.result.swiftSymbols) }
+    private var machSymbols: [MachSymbol] {
+        let r = engine.result.symbolsFull
+        if query.isEmpty { return Array(r.prefix(800)) }
+        return Array(r.filter { $0.name.localizedCaseInsensitiveContains(query) }.prefix(800))
     }
 
-    private var listArea: some View {
-        VStack(spacing: 0) {
-            Picker("来源", selection: $mode) {
-                Text("类 \(engine.result.classNames.count)").tag(0)
-                Text("方法 \(engine.result.methodNames.count)").tag(1)
-                Text("符号 \(engine.result.symbols.count)").tag(2)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-
-            TextField("搜索…", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .padding(12)
-
-            rowList()
-        }
+    private func filtered(_ list: [String]) -> [String] {
+        let base = query.isEmpty ? list : list.filter { $0.localizedCaseInsensitiveContains(query) }
+        return Array(base.prefix(600))
     }
 
-    private func rowList() -> some View {
+    var body: some View {
         List {
-            rows(Repos.filtered(source(mode), query))
-        }
-        .listStyle(.plain)
-    }
-
-    private func rows(_ items: [StringItem]) -> some View {
-        ForEach(items) { item in
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.text)
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .lineLimit(2)
+            Section {
+                NavigationLink {
+                    ObjCDumpView(engine: engine)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.text.below.ecg")
+                            .foregroundStyle(.blue)
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("ObjC 类完整转储")
+                                .font(.footnote.weight(.semibold))
+                            Text("class-dump 风格：类/属性/方法完整签名，可导出 .h")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                NavigationLink {
+                    SwiftMetaView(engine: engine)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "swift")
+                            .foregroundStyle(.orange)
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Swift 元数据深解")
+                                .font(.footnote.weight(.semibold))
+                            Text("类型/字段完整解析（struct/class/enum + 属性类型）")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
-            .padding(.vertical, 2)
+
+            if !swiftNames.isEmpty {
+                Section("Swift 符号（已还原 · \(engine.result.swiftSymbols.count) 条）") {
+                    ForEach(swiftNames, id: \.self) { s in
+                        Text(s)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            if !classes.isEmpty {
+                Section("ObjC 类名 (\(engine.result.classNames.count))") {
+                    ForEach(classes, id: \.self) { s in
+                        Text(s)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            if !methods.isEmpty {
+                Section("ObjC 方法选择器 (\(engine.result.methodNames.count))") {
+                    ForEach(methods, id: \.self) { s in
+                        Text(s)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            if !machSymbols.isEmpty {
+                Section("Mach-O 符号表 (\(engine.result.symbolsFull.count) 条，显示前 \(machSymbols.count))") {
+                    ForEach(machSymbols) { sym in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(sym.name)
+                                .font(.caption.monospaced())
+                                .lineLimit(2)
+                                .textSelection(.enabled)
+                            Text("\(sym.kind) · \(String(format: "0x%llX", sym.value))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            if classes.isEmpty && methods.isEmpty && machSymbols.isEmpty && swiftNames.isEmpty {
+                Section {
+                    Text("未找到符号（二进制可能已被 strip）")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
-    }
-
-    private func source(_ m: Int) -> [String] {
-        if m == 0 { return engine.result.classNames }
-        if m == 1 { return engine.result.methodNames }
-        return engine.result.symbols
-    }
-}
-
-// MARK: - 行模型 + 过滤（链式形态收口处）
-
-struct StringItem: Identifiable, Hashable {
-    let id: Int
-    let text: String
-}
-
-enum Repos {
-    static func filtered(_ src: [String], _ q: String, cap: Int = 5000) -> [StringItem] {
-        let key = q.trimmingCharacters(in: .whitespaces)
-        let picked: [String]
-        if key.isEmpty {
-            picked = src
-        } else {
-            picked = src.filter { $0.localizedCaseInsensitiveContains(key) }
-        }
-        return picked.prefix(cap).enumerated().map {
-            StringItem(id: $0.offset, text: $0.element)
-        }
+        .listStyle(.insetGrouped)
+        .searchable(text: $query, prompt: "搜类名 / 方法 / 符号")
     }
 }

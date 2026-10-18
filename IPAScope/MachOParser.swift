@@ -117,8 +117,10 @@ final class MachOParser {
 
     private func readSegment(_ b: [UInt8], _ p: Int, _ secIdx: inout Int, _ segIdx: Int) -> MachSegment {
         let segName = cstr(b, p + 8, 16)
+        let vmaddr = ZipReader.u64(b, p + 16)
         let vmSize = ZipReader.u64(b, p + 24)
-        let fileSize = ZipReader.u64(b, p + 32)
+        let fileOff = ZipReader.u64(b, p + 32)
+        let fileSize = ZipReader.u64(b, p + 40)
         let nsects = Int(ZipReader.u32(b, p + 64))
         var secs: [MachSection] = []
         var s = p + 72
@@ -136,7 +138,8 @@ final class MachOParser {
             secIdx += 1
             s += 80
         }
-        return MachSegment(id: segIdx, name: segName, vmSize: vmSize,
+        return MachSegment(id: segIdx, name: segName, vmaddr: vmaddr,
+                           vmSize: vmSize, fileOff: fileOff,
                            fileSize: fileSize, sections: secs)
     }
 
@@ -160,6 +163,18 @@ final class MachOParser {
                 let name = cstr(b, stroff + strx, 512)
                 if !name.isEmpty { names.append(name) }
             }
+            // 全量符号（带地址）：nlist64 = n_strx(4) n_type(1) n_sect(1) n_desc(2) n_value(8)
+            let value = ZipReader.u64(b, o + 8)
+            if value > 0 {
+                var kind = "未知"
+                if (ntype & 0x0e) == 0x0e {
+                    kind = (ntype & 0x01) == 0x01 ? "外部" : "本地"
+                }
+                let name = cstr(b, stroff + strx, 512)
+                if !name.isEmpty, symbolsFull.count < 200_000 {
+                    symbolsFull.append(MachSymbol(id: symbolsFull.count, name: name, value: value, kind: kind))
+                }
+            }
             i += 1
         }
         summary.symbolCount = names.count
@@ -168,6 +183,7 @@ final class MachOParser {
     }
 
     private(set) var symbolsRaw: [String] = []
+    private(set) var symbolsFull: [MachSymbol] = []
     private(set) var strTabRange: Range<Int>?
 
     // MARK: - Dylib

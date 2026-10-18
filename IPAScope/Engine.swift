@@ -1,8 +1,10 @@
 import Foundation
 import Combine
 
-// 分析总引擎：选 IPA → 按 ZIP 目录按需解压 → 找主二进制 → Mach-O 全解析
-// 全程安全作用域 + 后台线程 + 主线程回调
+// 分析总引擎 v2：
+// 导入三通道（Documents 扫描 / 文件选择器 / 分享打开）→ 统一拷入 Documents/ 入库
+// → 本地文件直接读（无安全作用域问题）→ ZIP 目录 → 主二进制 → Mach-O 全解析
+// 反汇编 / 资源预览数据源也在引擎里
 
 @MainActor
 final class AnalysisEngine: ObservableObject {
@@ -17,21 +19,64 @@ final class AnalysisEngine: ObservableObject {
     @Published var result = AnalysisResult()
     @Published var pickedURL: URL?
     @Published var fileName: String = ""
+    @Published var importedURLs: [URL] = []       // Documents 里的 IPA 列表
+    @Published var toast: String?                  // 轻提示（导入成功等）
 
     private var zip: ZipReader?
     private var binData: Data = Data()
+    private var funcSymbolMap: [UInt64: String] = [:]
 
-    func open(url: URL) {
+    // MARK: - 导入三通道
+
+    /// 文件选择器 / 分享打开 走这里：先入库（拷到 Documents），再分析
+    func importFromURL(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let doc = Self.documentsDir()
+            var dest = doc.appendingPathComponent(url.lastPathComponent)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                let ts = Int(Date().timeIntervalSince1970)
+                dest = doc.appendingPathComponent("\(ts)-\(url.lastPathComponent)")
+            }
+            try FileManager.default.copyItem(at: url, to: dest)
+            toast = "已入库：\(dest.lastPathComponent)"
+            refreshImportList()
+            openLocal(dest)
+        } catch {
+            phase = .failed("导入失败：\(error.localizedDescription)")
+        }
+    }
+
+    /// Documents 里点选已有文件直接分析（本地文件，无作用域）
+    func openLocal(_ url: URL) {
         phase = .working("打开文件…")
         result = AnalysisResult()
         binData = Data()
         fileName = url.lastPathComponent
         pickedURL = url
-        let scoped = url.startAccessingSecurityScopedResource()
-        Task {
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            await self.analyze(url: url)
-        }
+        Task { await self.analyze(url: url) }
+    }
+
+    func deleteImported(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
+        refreshImportList()
+        if pickedURL == url { reset() }
+    }
+
+    func refreshImportList() {
+        let doc = Self.documentsDir()
+        let items = (try? FileManager.default.contentsOfDirectory(
+            at: doc, includingPropertiesForKeys: nil)) ?? []
+        importedURLs = items
+            .filter { $0.pathExtension.lowercased() == "ipa" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    nonisolated static func documentsDir() -> URL {
+        let doc = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: doc, withIntermediateDirectories: true)
+        return doc
     }
 
     func reset() {
@@ -41,6 +86,7 @@ final class AnalysisEngine: ObservableObject {
         pickedURL = nil
         fileName = ""
         zip = nil
+        funcSymbolMap = [:]
     }
 
     // MARK: - 主流程
@@ -96,6 +142,24 @@ final class AnalysisEngine: ObservableObject {
             result.summary.dylibCount = parser.summary.dylibCount
             result.symbols = parser.symbolsRaw
 
+            // 带地址符号 + __text 定位（反汇编用）
+            let textSec = parser.allSections.first { $0.segment == "__TEXT" && $0.name == "__text" }
+            result.textSection = textSec
+            var full = parser.symbolsFull
+            if let t = textSec {
+                for idx in full.indices {
+                    let s = full[idx]
+                    if s.value >= t.addr && s.value < t.addr + t.size {
+                        full[idx] = MachSymbol(id: s.id, name: s.name, value: s.value, kind: "func")
+                    }
+                }
+            }
+            result.symbolsFull = full
+            funcSymbolMap = [:]
+            for s in full where s.kind == "func" {
+                if funcSymbolMap[s.value] == nil { funcSymbolMap[s.value] = s.name }
+            }
+
             // 字符串与 ObjC
             phase = .working("提取类名与字符串…")
             var strings: [String] = []
@@ -114,6 +178,9 @@ final class AnalysisEngine: ObservableObject {
             result.cstrings = Array(Set(strings)).sorted()
             result.summary.classCount = objc.classes.count
             result.summary.methodCount = objc.methods.count
+
+            // Swift 符号还原
+            result.swiftSymbols = SwiftDemangle.demangleList(result.cstrings)
 
             // 描述文件
             phase = .working("读取描述文件…")
@@ -134,5 +201,178 @@ final class AnalysisEngine: ObservableObject {
         guard !binData.isEmpty else { return Data() }
         let parser = MachOParser(data: binData)
         return parser.sectionData(sec, from: binData, limit: 4096)
+    }
+
+    // MARK: - 反汇编数据源
+
+    var funcSymbols: [MachSymbol] {
+        result.symbolsFull.filter { $0.kind == "func" }.sorted { $0.value < $1.value }
+    }
+
+    func disassembleFunction(at va: UInt64, maxInstructions: Int) -> [DisasmLine] {
+        guard let t = result.textSection, !binData.isEmpty else { return [] }
+        guard va >= t.addr, va < t.addr + t.size else { return [] }
+        let off = Int(va - t.addr)
+        guard off < binData.count else { return [] }
+        let len = min(maxInstructions * 4, binData.count - off)
+        guard len >= 4 else { return [] }
+        let d = binData.subdata(in: off..<(off + len))
+        var lines = ARM64Disassembler.disassemble(d, baseVA: va,
+                                                  maxInstructions: maxInstructions,
+                                                  symbols: funcSymbolMap)
+        // 字符串引用标注：adrp Xd, page 后紧跟 add Xd, Xd, #imm → 拼出 VA 查字符串表
+        buildStringMap()
+        for i in lines.indices {
+            guard lines[i].text.hasPrefix("adrp ") else { continue }
+            guard let page = hexTarget(lines[i].text) else { continue }
+            let parts = lines[i].text.split(separator: " ")
+            guard parts.count >= 2 else { continue }
+            let reg = String(parts[1])
+            for j in (i + 1)..<min(i + 4, lines.count) {
+                let t2 = lines[j].text
+                if t2.hasPrefix("add \(reg), \(reg), #") {
+                    let numPart = t2.dropFirst("add \(reg), \(reg), #".count)
+                        .components(separatedBy: ", ").first ?? "0"
+                    let imm = UInt64(numPart) ?? 0
+                    let va2 = page &+ imm
+                    if let s = stringByAddr[va2] {
+                        lines[j].note = "; → \"\(s.prefix(60))\""
+                    } else {
+                        lines[j].note = "; → 数据地址 \(String(format: "0x%llX", va2))"
+                    }
+                    break
+                }
+            }
+        }
+        return lines
+    }
+
+    private func hexTarget(_ text: String) -> UInt64? {
+        guard let r = text.range(of: "0x[0-9a-fA-F]+", options: .regularExpression) else { return nil }
+        return UInt64(text[r].dropFirst(2), radix: 16)
+    }
+
+    // MARK: - 资源预览数据源
+
+    func resourceData(for entry: ZipEntry, limit: Int = 4 * 1024 * 1024) -> Data? {
+        guard let z = zip, let e = z.entry(entry.path) else { return nil }
+        return try? z.data(for: e, maxBytes: limit)
+    }
+
+    // MARK: - ObjC 类转储（按需 + 缓存）
+
+    private var classDumpCache: [ObjCClassDump]?
+
+    func dumpClasses() -> [ObjCClassDump] {
+        if let c = classDumpCache { return c }
+        guard !binData.isEmpty else { return [] }
+        let dumper = ObjCDumper(data: binData, segments: result.segments, sections: result.allSections)
+        let classes = dumper.dump()
+        classDumpCache = classes
+        return classes
+    }
+
+    // MARK: - Swift 元数据（按需 + 缓存）
+
+    private var swiftMetaCache: [SwiftTypeDump]?
+
+    func swiftMeta() -> [SwiftTypeDump] {
+        if let c = swiftMetaCache { return c }
+        guard !binData.isEmpty else { return [] }
+        let dumper = SwiftMetaDumper(data: binData, segments: result.segments, sections: result.allSections)
+        let types = dumper.dump()
+        swiftMetaCache = types
+        return types
+    }
+
+    // MARK: - Assets.car 提取
+
+    func assetsCarData() -> Data? {
+        guard let z = zip else { return nil }
+        for e in z.entries where e.path.lowercased().hasSuffix("assets.car") {
+            if let d = try? z.data(for: e, maxBytes: 256 * 1024 * 1024) {
+                return d
+            }
+        }
+        return nil
+    }
+
+    // MARK: - VA → 字符串（反汇编引用标注）
+
+    private var stringByAddr: [UInt64: String] = [:]
+
+    private func buildStringMap() {
+        guard stringByAddr.isEmpty, !binData.isEmpty else { return }
+        let parser = MachOParser(data: binData)
+        let names: Set<String> = ["__cstring", "__objc_classname", "__objc_methname", "__objc_methtype", "__ustring"]
+        for sec in result.allSections where names.contains(sec.name) {
+            let d = parser.sectionData(sec, from: binData, limit: 16 * 1024 * 1024)
+            let bytes = [UInt8](d)
+            var start = 0
+            var i = 0
+            while i < bytes.count {
+                if bytes[i] == 0 {
+                    if i > start {
+                        let s = String(bytes: bytes[start..<i], encoding: .utf8)
+                            ?? String(bytes: bytes[start..<i], encoding: .isoLatin1)
+                        if let s = s, !s.isEmpty, s.count < 200 {
+                            stringByAddr[sec.addr + UInt64(start)] = s
+                        }
+                    }
+                    start = i + 1
+                }
+                i += 1
+            }
+        }
+    }
+
+    func stringAt(vm: UInt64) -> String? {
+        buildStringMap()
+        return stringByAddr[vm]
+    }
+
+    // MARK: - 导出（Documents/exports/）
+
+    nonisolated static func exportsDir() -> URL {
+        let dir = documentsDir().appendingPathComponent("exports", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// 保存导出文件，返回显示名；失败返回 nil
+    @discardableResult
+    func saveExport(_ data: Data, name: String) -> String? {
+        let dir = Self.exportsDir()
+        var dest = dir.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: dest.path) {
+            dest = dir.appendingPathComponent("\(Int(Date().timeIntervalSince1970))-\(name)")
+        }
+        do {
+            try data.write(to: dest)
+            toast = "已导出到 exports：\(dest.lastPathComponent)"
+            return dest.lastPathComponent
+        } catch {
+            toast = "导出失败：\(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// 把选中的资源条目打包 zip 并导出
+    @discardableResult
+    func exportResourcesZip(_ entries: [ZipEntry], zipName: String) -> Bool {
+        var files: [ZIPEntry] = []
+        for e in entries {
+            if let d = resourceData(for: e, limit: 128 * 1024 * 1024) {
+                // 保留包内相对路径（去掉 appFolder 前缀，保持目录结构）
+                var rel = e.path
+                if rel.hasPrefix(result.appFolder) { rel = String(rel.dropFirst(result.appFolder.count)) }
+                files.append(ZIPEntry(path: rel, data: d))
+            }
+        }
+        guard !files.isEmpty, let zipData = ZIPWriter.write(files) else {
+            toast = "打包失败（无有效文件）"
+            return false
+        }
+        return saveExport(zipData, name: zipName) != nil
     }
 }
