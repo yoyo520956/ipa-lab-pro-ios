@@ -54,31 +54,23 @@ jobs:
           vm_stat | head -6
           df -h / | tail -2
           echo ""
-          echo "===== 完整日志中被 tail 截掉的中段错误行 ====="
+          echo "===== 完整日志中的全部 error 行（防 tail 截断）====="
           rg -n 'error:' /tmp/full_build.log | head -40 || echo "（完整日志中也无 error: 行）"
           echo ""
           echo "===== xcresulttool 官方结果包解析 ====="
           if [ -d build/Diag.xcresult ]; then
-            xcrun xcresulttool get --legacy --format json --path build/Diag.xcresult > /tmp/xc_legacy.json 2>/tmp/xc_err.txt
+            xcrun xcresulttool get --legacy --format json --path build/Diag.xcresult > /tmp/xc_legacy.json 2>/tmp/xc_err.txt || true
             if [ -s /tmp/xc_legacy.json ]; then
-              python3 -c "
-import json
-d = json.load(open('/tmp/xc_legacy.json'))
-def walk(o):
-    if isinstance(o, dict):
-        t = o.get('_type', {}).get('_name', '')
-        if 'Issue' in t or 'Diagnostic' in t or 'Error' in t:
-            print(json.dumps(o, ensure_ascii=False)[:900])
-        for v in o.values(): walk(v)
-    elif isinstance(o, list):
-        for v in o: walk(v)
-walk(d)
-" | head -60
+              echo "legacy JSON 大小: $(wc -c < /tmp/xc_legacy.json)B — 提取 issue 节点:"
+              python3 -c 'import json; d=json.load(open("/tmp/xc_legacy.json")); import sys; [print(json.dumps(x, ensure_ascii=False)[:800]) for x in [d]]; ' 2>/dev/null | head -30
+              echo "---- 顶层结构:"
+              python3 -c 'import json; d=json.load(open("/tmp/xc_legacy.json")); print(list(d.keys()) if isinstance(d,dict) else type(d))' 2>/dev/null
             else
-              echo "legacy 接口无输出: $(cat /tmp/xc_err.txt | head -2)"
-              xcrun xcresulttool get test-results summary --path build/Diag.xcresult 2>&1 | head -20
-              xcrun xcresulttool --help 2>&1 | head -20
+              echo "legacy 接口无输出: $(head -2 /tmp/xc_err.txt)"
             fi
+            echo ""
+            echo "---- xcresulttool 新式接口尝试:"
+            xcrun xcresulttool get test-results summary --path build/Diag.xcresult 2>&1 | head -15
           else
             echo "无结果包生成"
           fi
@@ -86,25 +78,19 @@ walk(d)
           echo "===== .dia 序列化诊断文本（strings 提取）====="
           find build -name "*.dia" -size +0 2>/dev/null | head -8 | while read f; do
             echo "--- $f ($(wc -c < $f)B)"
-            strings "$f" | rg -i 'error|warning|fatal|signal' | head -15
+            strings "$f" | rg -i 'error|fatal|signal|Segmentation' | head -15
           done
           echo ""
           echo "===== 重放 ARMMapping clang 前端（去序列化，直出错误）====="
-          # 找到构建系统留下的 response file，手动重放单个前端命令（不带 -serialize-diagnostic-file）
-          RESP=$(find build -name "*common-args.resp" | head -1)
-          if [ -n "$RESP" ]; then
-            echo "response file: $RESP"
-            # 手动对 ARMMapping.c 跑 clang -cc1（-O1 + 完整前端参数从 .resp 取），错误直接输出
-            SRC=Vendor/capstone/arch/ARM/ARMMapping.c
-            SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-            xcrun clang -cc1 -triple arm64-apple-ios16.0.0 \
-              -fsyntax-only -O1 \
-              -isysroot "$SDK" \
-              -I "$(pwd)/Vendor/capstone/include" \
-              -Wno-documentation -Wno-shorten-64-to-32 \
-              "$SRC" 2>&1 | head -40
-            echo "重放 exit: $?"
-          fi
+          SRC=Vendor/capstone/arch/ARM/ARMMapping.c
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun clang -cc1 -triple arm64-apple-ios16.0.0 \
+            -fsyntax-only -O1 \
+            -isysroot "$SDK" \
+            -I "$(pwd)/Vendor/capstone/include" \
+            -Wno-documentation -Wno-shorten-64-to-32 \
+            "$SRC" 2>&1 | head -40
+          echo "重放 exit: $?"
 
       - name: Upload full build log + diagnostics
         if: always()
