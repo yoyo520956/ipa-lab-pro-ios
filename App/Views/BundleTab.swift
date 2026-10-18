@@ -51,7 +51,7 @@ struct BundleTab: View {
                 Text(e).font(.caption).foregroundStyle(DS.red).padding(.horizontal)
             }
 
-            List(visible.prefix(3000)) { entry in
+            List(Array(visible.prefix(3000))) { entry in
                 HStack(spacing: 10) {
                     Image(systemName: icon(for: entry))
                         .foregroundStyle(DS.accent)
@@ -267,7 +267,7 @@ struct MachOTab: View {
                     let q = symbolFilter.lowercased()
                     return m.symbols.filter { $0.name.lowercased().contains(q) || $0.demangled.lowercased().contains(q) }
                 }()
-                List(filtered.prefix(4000)) { s in
+                List(Array(filtered.prefix(4000))) { s in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.demangled == s.name ? s.name : s.demangled)
                             .font(.system(.caption, design: .monospaced))

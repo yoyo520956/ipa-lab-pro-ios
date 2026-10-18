@@ -112,12 +112,12 @@ struct DisasmTab: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         if showPseudocode {
-                            ForEach(Array(DisasmService.pseudocode(for: instructions).enumerated()), id: \.offset) { i, line in
-                                Text(line)
+                            ForEach(Array(DisasmService.pseudocode(for: instructions).enumerated()), id: \.offset) { pair in
+                                Text(pair.element)
                                     .font(.system(.caption2, design: .monospaced))
                                     .textSelection(.enabled)
-                                if i < instructions.count {
-                                    Text("0x\(String(instructions[i].address, radix: 16))").font(.system(.micro, design: .monospaced)).foregroundStyle(.tertiary)
+                                if pair.offset < instructions.count {
+                                    Text("0x\(String(instructions[pair.offset].address, radix: 16))").font(.system(.micro, design: .monospaced)).foregroundStyle(.tertiary)
                                 }
                             }
                         } else {

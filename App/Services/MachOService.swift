@@ -43,9 +43,9 @@ final class MachOService {
     static func cpuTypeName(_ raw: UInt32) -> String {
         switch raw {
         case 7: return "x86 / i386"
-        case 7 + 0x0100_0000: return "x86_64"
+        case 0x0100_0007: return "x86_64"
         case 12: return "ARM64 (arm64)"
-        case 12 + 0x0100_0000: return "ARM64e (arm64e)"
+        case 0x0100_000C: return "ARM64e (arm64e)"
         case 11: return "ARM (armv7)"
         default: return "cputype(\(raw))"
         }
@@ -121,12 +121,13 @@ final class MachOService {
         // 加载命令
         var idx = 0
         for cmd in machO.loadCommands {
-            let name = Self.loadCommandNames[cmd.type.rawValue] ?? cmd.type.rawValue.map { String(format: "LC(0x%X)", $0) }
+            let lcRaw = cmd.type.rawValue
+            let name = Self.loadCommandNames[lcRaw] ?? String(format: "LC(0x%X)", lcRaw)
             var detail = ""
             if let dylib = cmd.info as? DylibCommand {
                 detail = (try? dylib.dylib(in: machO).name) ?? ""
             }
-            info.loadCommands.append(LoadCommandInfo(id: idx, name: name, size: cmd.layout.cmdsize, detail: detail))
+            info.loadCommands.append(LoadCommandInfo(id: idx, name: name, size: 0, detail: detail))
             idx += 1
         }
         info.linkedDylibs = Array(Set(info.loadCommands.compactMap { $0.detail.isEmpty ? nil : $0.detail })).sorted()

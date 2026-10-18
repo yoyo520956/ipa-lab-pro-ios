@@ -59,7 +59,10 @@ final class DisasmService {
                 if count > 0, let i = insn {
                     let m = Self.cStringTuple(i.pointee.mnemonic)
                     let ops = Self.cStringTuple(i.pointee.op_str)
-                    let bytes = (0..<Int(i.pointee.size)).map { String(format: "%02x", i.pointee.bytes[$0]) }.joined(separator: " ")
+                    let bTuple = i.pointee.bytes
+                    let bytes = withUnsafeBytes(of: bTuple) { raw -> String in
+                        (0..<Int(i.pointee.size)).map { String(format: "%02x", raw[$0]) }.joined(separator: " ")
+                    }
                     out.append(InstructionEntry(id: idx, address: i.pointee.address, size: i.pointee.size, mnemonic: m, operands: ops, bytes: bytes))
                     offset += Int(i.pointee.size)
                     cs_free(insn, count)
