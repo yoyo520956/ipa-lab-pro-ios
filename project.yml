@@ -1,0 +1,81 @@
+name: IPALabPro
+options:
+  bundleIdPrefix: com.qingyao
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+packages:
+  MachOKit:
+    url: https://github.com/p-x9/MachOKit
+    exactVersion: 0.55.0
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation
+    exactVersion: 0.9.20
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+targets:
+  IPALabPro:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Vendor/capstone/include
+        buildPhase: headers
+      - path: Vendor/capstone/cs.c
+      - path: Vendor/capstone/utils.c
+      - path: Vendor/capstone/MCInst.c
+      - path: Vendor/capstone/MCInstrDesc.c
+      - path: Vendor/capstone/MCRegisterInfo.c
+      - path: Vendor/capstone/Mapping.c
+      - path: Vendor/capstone/SStream.c
+      - path: Vendor/capstone/arch/AArch64
+        buildPhase: sources
+        excludes: ["**/*.inc", "**/*.h"]
+      - path: Vendor/capstone/arch/ARM
+        buildPhase: sources
+        excludes: ["**/*.inc", "**/*.h"]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.qingyao.ipalabpro
+        INFOPLIST_KEY_CFBundleDisplayName: "IPA Lab Pro"
+        INFOPLIST_KEY_CFBundleName: "IPALabPro"
+        SWIFT_OBJC_BRIDGING_HEADER: App/Bridging/IPALab-Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(SRCROOT)/Vendor/capstone/include"
+        GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) CAPSTONE_HAS_ARM64=1 CAPSTONE_HAS_ARM=1 CAPSTONE_USE_SYS_DYN_MEM=1"
+        TARGETED_DEVICE_FAMILY: "1"
+        CURRENT_PROJECT_VERSION: "20261018.01"
+        MARKETING_VERSION: "1.0.0"
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+        INFOPLIST_KEY_UIRequiresFullScreen: "YES"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown"
+        ENABLE_USER_SCRIPT_SANDBOXING: "NO"
+    dependencies:
+      - package: MachOKit
+      - package: ZIPFoundation
+  IPALabProTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - target: IPALabPro
+schemes:
+  IPALabPro:
+    build:
+      targets:
+        IPALabPro: all
+        IPALabProTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - IPALabProTests

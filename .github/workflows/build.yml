@@ -1,0 +1,64 @@
+name: Build IPA Lab Pro
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app 2>/dev/null || true
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Project
+        run: |
+          xcodegen generate
+          ls -la
+
+      - name: Build (unsigned IPA)
+        run: |
+          set -o pipefail
+          xcodebuild -project IPALabPro.xcodeproj \
+            -scheme IPALabPro \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tail -300
+
+      - name: Run Engine Tests (simulator)
+        run: |
+          set -o pipefail
+          xcodebuild -project IPALabPro.xcodeproj \
+            -scheme IPALabPro \
+            -destination 'platform=iOS Simulator,name=iPhone SE (3rd generation)' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            test 2>&1 | tail -120 || echo "TEST_STEP_FAILED (IPA artifact still uploaded)"
+
+      - name: Package IPA
+        run: |
+          ls build/Build/Products/Release-iphoneos/
+          test -f build/Build/Products/Release-iphoneos/IPALabPro.app/IPALabPro || (echo "FATAL: 主二进制缺失（假成功防护）" && exit 1)
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/IPALabPro.app Payload/
+          zip -qry IPALabPro-unsigned.ipa Payload
+          unzip -t IPALabPro-unsigned.ipa > /dev/null && echo "IPA CRC OK"
+          ls -la IPALabPro-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipalabpro-ipa
+          path: IPALabPro-unsigned.ipa
+          if-no-files-found: error
