@@ -106,12 +106,15 @@ struct BundleTab: View {
         }
     }
 
+    @MainActor
     private func load() {
         guard entries.isEmpty, !loading else { return }
         loading = true
         errorText = nil
+        let config = engine.config      // MainActor 上取快照
+        let ipaURL = engine.ipaURL
         Task.detached {
-            let list = (try? ZipService(config: engine.config).listEntries(at: engine.ipaURL)) ?? []
+            let list = (try? ZipService(config: config).listEntries(at: ipaURL)) ?? []
             await MainActor.run {
                 entries = list
                 loading = false
@@ -120,11 +123,14 @@ struct BundleTab: View {
         }
     }
 
+    @MainActor
     private func extractAndPreview(_ entry: ArchiveEntry) {
+        let config = engine.config      // MainActor 上取快照
+        let ipaURL = engine.ipaURL
         Task.detached {
             do {
                 let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "_" + (entry.path as NSString).lastPathComponent)
-                _ = try ZipService(config: engine.config).extractEntry(named: entry.path, from: engine.ipaURL, to: tmp)
+                _ = try ZipService(config: config).extractEntry(named: entry.path, from: ipaURL, to: tmp)
                 let lower = entry.path.lowercased()
                 var text = ""
                 if ["txt", "json", "plist", "xml", "strings", "stringsdict", "md", "html", "css", "js"].contains(where: lower.hasSuffix) {

@@ -162,6 +162,7 @@ struct DisasmTab: View {
         }
     }
 
+    @MainActor
     private func run() {
         guard let m = engine.machOInfo, let bin = try? engine.locateMainBinary() else { return }
         let startVM: UInt64
@@ -176,7 +177,7 @@ struct DisasmTab: View {
         running = true
         errorText = nil
         instructions = []
-        let svc = DisasmService(config: engine.config)
+        let config = engine.config      // MainActor 上取快照
         let req = DisasmRequest(
             arch: m.cputype.contains("ARM64") ? CS_ARCH_ARM64 : CS_ARCH_ARM,
             mode: CS_MODE_LITTLE_ENDIAN,
@@ -185,6 +186,7 @@ struct DisasmTab: View {
             maxInstructions: count
         )
         Task.detached {
+            let svc = DisasmService(config: config)   // 闭包内新建，class 不跨隔离传递
             let result = (try? svc.disassemble(at: bin, request: req)) ?? []
             await MainActor.run {
                 instructions = result
