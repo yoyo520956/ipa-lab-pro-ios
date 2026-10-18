@@ -7,7 +7,7 @@ struct DisasmLine: Identifiable, Hashable {
     let addr: UInt64
     let hex: String
     let text: String
-    let note: String
+    var note: String
 }
 
 // MARK: - ARM64 轻量反汇编器

@@ -108,7 +108,7 @@ enum AssetsCar {
                                              src.count, nil, COMPRESSION_LZFSE)
         }
         guard r > 0 else { return nil }
-        return Data(dst.prefix(r))
+        return Data(bytes: dst, count: r)
     }
 
     static func reportText(_ rep: ScanReport) -> String {
