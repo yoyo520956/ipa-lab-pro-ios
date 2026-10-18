@@ -112,7 +112,8 @@ struct DisasmTab: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         if showPseudocode {
-                            ForEach(Array(DisasmService.pseudocode(for: instructions).enumerated()), id: \.offset) { pair in
+                            let pseudoLines = DisasmService.pseudocode(for: instructions)
+                            ForEach(Array(pseudoLines.enumerated()), id: \.offset) { pair in
                                 Text(pair.element)
                                     .font(.system(.caption2, design: .monospaced))
                                     .textSelection(.enabled)

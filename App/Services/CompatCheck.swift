@@ -28,9 +28,9 @@ struct CompatReport: Codable {
         lines.append("热状态：\(thermalStateText) · 内存压力：\(memoryPressure ? "有" : "无")")
         lines.append("引擎自检 — MachOKit：\(engineMachOKit) · Capstone：\(engineCapstone) · ZIPFoundation：\(engineZip)")
         if thermalStateText != "正常" || memoryPressure || diskFreeGB < 1.0 {
-            lines.append("⚠️ 资源紧张，已自动切换到低性能模式执行大型任务。")
+            lines.append("注意：资源紧张，已自动切换到低性能模式执行大型任务。")
         } else {
-            lines.append("✅ 兼容性检查通过。")
+            lines.append("兼容性检查通过。")
         }
         return lines.joined(separator: "\n")
     }

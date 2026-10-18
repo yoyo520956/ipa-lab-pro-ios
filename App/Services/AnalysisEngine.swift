@@ -83,7 +83,7 @@ final class AnalysisEngine: ObservableObject {
                 self.phase = .done
                 self.progress = 1
                 self.isRunning = false
-                self.addLog("✅ 分析完成")
+                self.addLog("分析完成")
                 var p = self.project
                 p.status = "done"
                 p.statusMessage = "分析完成"
@@ -98,7 +98,7 @@ final class AnalysisEngine: ObservableObject {
             } catch {
                 self.isRunning = false
                 self.errorMessage = error.localizedDescription
-                self.addLog("❌ 错误：\(error.localizedDescription)")
+                self.addLog("错误：\(error.localizedDescription)")
                 var p = self.project
                 p.status = "failed"
                 p.statusMessage = error.localizedDescription

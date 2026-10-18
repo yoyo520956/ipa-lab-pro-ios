@@ -55,9 +55,9 @@ final class MachOService {
         switch raw {
         case 0xFEED_FACE: return "MH_MAGIC (32位)"
         case 0xFEED_FACF: return "MH_MAGIC_64 (64位)"
-        case 0xBEBA_BEBA: return "FAT (通用二进制)"
-        case 0xFEED_FACE.bigEndian: return "MH_CIGAM (32位·字节反序)"
-        case 0xFEED_FACF.bigEndian: return "MH_CIGAM_64 (64位·字节反序)"
+        case 0xCAFEBABE, 0xBEBAFECA: return "FAT (通用二进制)"
+        case UInt32(0xFEED_FACE).bigEndian: return "MH_CIGAM (32位·字节反序)"
+        case UInt32(0xFEED_FACF).bigEndian: return "MH_CIGAM_64 (64位·字节反序)"
         default: return String(format: "未知 magic 0x%08X", raw)
         }
     }

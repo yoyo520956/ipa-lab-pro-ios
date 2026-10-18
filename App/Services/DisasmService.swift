@@ -24,7 +24,7 @@ final class DisasmService {
     /// C char[N] 元组 → Swift String（capstone mnemonic/op_str）
     static func cStringTuple<T>(_ tuple: T) -> String {
         withUnsafeBytes(of: tuple) { raw in
-            let base = raw.baseAddress!.assumingMemoryBound(to: CChar.self)
+            guard let base = raw.baseAddress?.assumingMemoryBound(to: CChar.self) else { return "" }
             return String(cString: base)
         }
     }
@@ -63,7 +63,7 @@ final class DisasmService {
                     let bytes = withUnsafeBytes(of: bTuple) { raw -> String in
                         (0..<Int(i.pointee.size)).map { String(format: "%02x", raw[$0]) }.joined(separator: " ")
                     }
-                    out.append(InstructionEntry(id: idx, address: i.pointee.address, size: i.pointee.size, mnemonic: m, operands: ops, bytes: bytes))
+                    out.append(InstructionEntry(id: idx, address: i.pointee.address, size: UInt32(i.pointee.size), mnemonic: m, operands: ops, bytes: bytes))
                     offset += Int(i.pointee.size)
                     cs_free(insn, count)
                     idx += 1
