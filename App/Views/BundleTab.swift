@@ -51,7 +51,7 @@ struct BundleTab: View {
                 Text(e).font(.caption).foregroundStyle(DS.red).padding(.horizontal)
             }
 
-            List(Array(visible.prefix(3000)), id: \.path) { entry in
+            List(visible.prefix(3000), id: \.path) { entry in
                 HStack(spacing: 10) {
                     Image(systemName: icon(for: entry))
                         .foregroundStyle(DS.accent)

@@ -113,12 +113,12 @@ struct DisasmTab: View {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         if showPseudocode {
                             let pseudoLines = DisasmService.pseudocode(for: instructions)
-                            ForEach(Array(pseudoLines.enumerated()), id: \.offset) { pair in
-                                Text(pair.element)
+                            ForEach(pseudoLines.indices, id: \.self) { index in
+                                Text(pseudoLines[index])
                                     .font(.system(.caption2, design: .monospaced))
                                     .textSelection(.enabled)
-                                if pair.offset < instructions.count {
-                                    Text("0x\(String(instructions[pair.offset].address, radix: 16))").font(.system(.micro, design: .monospaced)).foregroundStyle(.tertiary)
+                                if index < instructions.count {
+                                    Text("0x\(String(instructions[index].address, radix: 16))").font(.system(.micro, design: .monospaced)).foregroundStyle(.tertiary)
                                 }
                             }
                         } else {
