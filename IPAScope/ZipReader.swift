@@ -56,15 +56,39 @@ final class ZipReader {
         while pos + 46 <= cd.count && idx < Int(cdCount) {
             guard cd[pos] == 0x50, cd[pos+1] == 0x4b, cd[pos+2] == 0x01, cd[pos+3] == 0x02 else { break }
             let method = Self.u16(cd, pos + 10)
-            let packed = UInt64(Self.u32(cd, pos + 20))
-            let size = UInt64(Self.u32(cd, pos + 24))
+            var packed = UInt64(Self.u32(cd, pos + 20))
+            var size = UInt64(Self.u32(cd, pos + 24))
             let crc = Self.u32(cd, pos + 16)
             let nameLen = Int(Self.u16(cd, pos + 28))
             let extraLen = Int(Self.u16(cd, pos + 30))
             let commentLen = Int(Self.u16(cd, pos + 32))
-            let localOff = UInt64(Self.u32(cd, pos + 42))
+            var localOff = UInt64(Self.u32(cd, pos + 42))
             guard pos + 46 + nameLen <= cd.count else { break }
             let name = String(bytes: cd[(pos+46)..<(pos+46+nameLen)], encoding: .utf8) ?? ""
+            // ZIP64：主字段 0xFFFFFFFF 时真实值在 extra field（id 0x0001）里
+            if packed == 0xFFFFFFFF || size == 0xFFFFFFFF || localOff == 0xFFFFFFFF {
+                let extraBase = pos + 46 + nameLen
+                var ep = extraBase
+                let extraEnd = extraBase + extraLen
+                while ep + 4 <= extraEnd, ep + 4 <= cd.count {
+                    let hid = Self.u16(cd, ep)
+                    let hsize = Int(Self.u16(cd, ep + 2))
+                    if hid == 0x0001 {
+                        var dp = ep + 4
+                        if size == 0xFFFFFFFF, dp + 8 <= extraEnd {
+                            size = Self.u64(cd, dp); dp += 8
+                        }
+                        if packed == 0xFFFFFFFF, dp + 8 <= extraEnd {
+                            packed = Self.u64(cd, dp); dp += 8
+                        }
+                        if localOff == 0xFFFFFFFF, dp + 8 <= extraEnd {
+                            localOff = Self.u64(cd, dp); dp += 8
+                        }
+                        break
+                    }
+                    ep += 4 + hsize
+                }
+            }
             let entry = ZipEntry(id: idx, path: name, size: size, packed: packed,
                                  method: method, offset: localOff, crc: crc)
             entries.append(entry)
@@ -107,7 +131,7 @@ final class ZipReader {
             }
             return out
         }
-        throw IPAError.unsupported("压缩方法 \(entry.method) 不支持（仅 store/deflate）: \(entry.path)")
+        throw IPAError.unsupported("压缩方法 \(entry.method) 暂不支持（仅 store/deflate）: \(entry.path)（packed=\(entry.packed) size=\(entry.size) off=\(entry.offset)）")
     }
 
     /// FileHandle 读取可能短读——循环读满为止
@@ -134,6 +158,19 @@ final class ZipReader {
     }
 
     static func inflate(_ src: Data, outSize: Int) throws -> Data {
+        // 模式 1：标准 zip 的 raw deflate
+        if let d = try? inflateRaw(src, outSize: outSize), d.count == outSize {
+            return d
+        }
+        // 模式 2：非标打包器的 zlib 包裹格式（2 字节头 + adler32 尾）
+        if src.count > 6, let d = try? inflateRaw(src.subdata(in: 2..<(src.count - 4)), outSize: outSize),
+           d.count == outSize {
+            return d
+        }
+        throw IPAError.unsupported("deflate 解压失败（raw/zlib 双模式均失败，packed=\(src.count) 期望输出 \(outSize)）")
+    }
+
+    private static func inflateRaw(_ src: Data, outSize: Int) throws -> Data {
         // 流式解压（compression_stream）：比 decode_buffer 可靠，不会静默提前返回
         var dst = Data(count: outSize)
         var produced = 0
@@ -154,13 +191,14 @@ final class ZipReader {
                     if st == COMPRESSION_STATUS_ERROR { return COMPRESSION_STATUS_ERROR }
                     if st == COMPRESSION_STATUS_END { break }
                     if stream.dst_size == 0 { break }   // 输出缓冲已满
+                    if stream.src_size == 0 { break }   // 输入耗尽（防死循环，产出校验交给外层）
                 }
                 produced = outSize - Int(stream.dst_size)
                 return st
             }
         }
         guard status == COMPRESSION_STATUS_END else {
-            throw IPAError.unsupported("deflate 解压失败（流式）")
+            throw IPAError.unsupported("raw deflate 流式失败")
         }
         guard produced == outSize else {
             throw IPAError.notZip("解压产出不足（\(produced)/\(outSize)）")
