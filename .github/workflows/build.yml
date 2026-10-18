@@ -38,6 +38,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            IDEBuildOperationMaxNumberOfConcurrentCompileTasks=2 \
             build 2>&1 | tail -300
 
       - name: Run Engine Tests (simulator)
