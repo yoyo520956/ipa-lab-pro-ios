@@ -6,8 +6,8 @@
 
 import Foundation
 
-final class ReportService {
-    let engine: AnalysisEngine
+@MainActor
+final class ReportService {    let engine: AnalysisEngine
 
     init(engine: AnalysisEngine) { self.engine = engine }
 

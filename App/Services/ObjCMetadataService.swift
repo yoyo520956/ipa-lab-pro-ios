@@ -21,13 +21,6 @@ final class ObjCMetadataService {
         }
         let limit = config.performanceMode.stringLimit
 
-        let sections: [(String, [String])] = [
-            ("__objc_classname", &result.classNames),
-            ("__objc_methname", &result.selectors),
-            ("__objc_catname", &result.categories)
-        ]
-        _ = sections // 防误用：改用下方显式处理保证 append 语义
-
         func cstrings(inSection name: String, into array: inout [String], cancelled: () -> Bool) {
             guard let sec = machO.sections.first(where: { $0.sectionName == name }), sec.size > 0 else { return }
             let start = Int(sec.fileOffset)

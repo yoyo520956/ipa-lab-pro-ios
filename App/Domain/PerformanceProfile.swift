@@ -113,7 +113,7 @@ struct AnalysisConfig: Codable {
     /// 自动兼容性降档：内存压力 / 过热 / 磁盘紧张 → 自动降到低性能
     static func effectiveMode(for config: AnalysisConfig, compat: CompatReport?) -> PerformanceMode {
         guard config.autoAdjust, let c = compat else { return config.performanceMode }
-        if c.thermalStateText != "正常" || c.diskFreeBytes < 1_000_000_000 || c.memoryPressure {
+        if c.thermalStateText != "正常" || c.diskFreeGB < 1.0 || c.memoryPressure {
             return .low
         }
         return config.performanceMode

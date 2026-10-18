@@ -47,7 +47,7 @@ final class ZipService {
             let archive = try Archive(url: tmp, accessMode: .create)
             try archive.addEntry(with: src.lastPathComponent, relativeTo: src.deletingLastPathComponent())
             let readBack = try Archive(url: tmp, accessMode: .read)
-            guard let entry = readBack.first else { return false }
+            guard let entry = readBack.makeIterator().next() else { return false }
             var data = Data()
             _ = try readBack.extract(entry, bufferSize: 64 * 1024) { chunk in data.append(chunk) }
             return String(data: data, encoding: .utf8)?.hasPrefix("IPA Lab Pro") == true
@@ -85,7 +85,7 @@ final class ZipService {
                 out.append(ArchiveEntry(path: d + "/", size: 0, isDirectory: true, category: Self.category(of: d)))
             }
             if !isDir {
-                out.append(ArchiveEntry(path: path, size: UInt64(entry.size), isDirectory: false, category: Self.category(of: path)))
+                out.append(ArchiveEntry(path: path, size: UInt64(entry.uncompressedSize), isDirectory: false, category: Self.category(of: path)))
             }
             if out.count >= 20_000 { break }
         }
@@ -122,7 +122,7 @@ final class ZipService {
             if entry.type == .directory {
                 try? FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
             } else {
-                if Int64(entry.size) > maxEntrySize { continue } // 上限保护
+                if Int64(entry.uncompressedSize) > maxEntrySize { continue } // 上限保护
                 let parent = target.deletingLastPathComponent()
                 try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
                 try archive.extract(entry, to: target, skipCRC32: true)
@@ -141,7 +141,7 @@ final class ZipService {
             throw NSError(domain: "ZipService", code: 404, userInfo: [NSLocalizedDescriptionKey: "未找到文件：\(path)"])
         }
         guard Self.isSafeEntryPath(path) else { throw ZipError.unsafePath(path) }
-        if entry.type == .file, Int64(entry.size) > maxEntrySize { throw ZipError.tooLarge(path) }
+        if entry.type == .file, Int64(entry.uncompressedSize) > maxEntrySize { throw ZipError.tooLarge(path) }
         try FileManager.default.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try archive.extract(entry, to: destURL, skipCRC32: true)
         return destURL

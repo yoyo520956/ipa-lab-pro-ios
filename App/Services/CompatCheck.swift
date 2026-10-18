@@ -91,7 +91,7 @@ enum CompatCheck {
         guard kr == KERN_SUCCESS else { return 1.0 }
         let pageSize: UInt64 = 16384
         let free = UInt64(stats.free_count + stats.inactive_count) * pageSize
-        let total = UInt64(r.totalMemoryMB) * 1024 * 1024
+        let total = ProcessInfo.processInfo.physicalMemory
         guard total > 0 else { return 1.0 }
         return Double(free) / Double(total)
     }
@@ -106,7 +106,7 @@ enum CompatCheck {
         let count = cs_disasm(handle, bytes, bytes.count, 0x1000, 1, &insn)
         defer { cs_free(insn, count) }
         guard count == 1, let i = insn else { return false }
-        return String(cString: i.pointee.mnemonic) == "ret"
+        return DisasmService.cStringTuple(i.pointee.mnemonic) == "ret"
     }
 
     static func checkMachOKit() -> Bool {

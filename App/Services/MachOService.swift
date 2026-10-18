@@ -82,13 +82,14 @@ final class MachOService {
         var info = MachOInfo()
 
         let header = machO.header
-        info.magic = Self.magicName(header.layout.magic)
-        info.cputype = Self.cpuTypeName(header.layout.cputype)
-        info.cpusubtype = "cpusubtype(\(header.layout.cpusubtype))"
-        info.fileType = Self.fileTypeNames[header.layout.filetype] ?? "filetype(\(header.layout.filetype))"
-        info.ncmds = header.layout.ncmds
-        info.sizeofcmds = header.layout.sizeofcmds
-        info.flags = Self.flagsNames(header.layout.flags)
+        let h = header.layout
+        info.magic = Self.magicName(UInt32(truncatingIfNeeded: h.magic))
+        info.cputype = Self.cpuTypeName(UInt32(truncatingIfNeeded: h.cputype))
+        info.cpusubtype = "cpusubtype(\(h.cpusubtype))"
+        info.fileType = Self.fileTypeNames[UInt32(truncatingIfNeeded: h.filetype)] ?? "filetype(\(h.filetype))"
+        info.ncmds = UInt32(truncatingIfNeeded: h.ncmds)
+        info.sizeofcmds = UInt32(truncatingIfNeeded: h.sizeofcmds)
+        info.flags = Self.flagsNames(UInt32(truncatingIfNeeded: h.flags))
 
         // 段与节
         var sections: [MachOSectionInfo] = []
@@ -99,8 +100,8 @@ final class MachOService {
                 vmSize: UInt64(bitPattern: Int64(seg.virtualMemorySize)),
                 fileOffset: UInt64(bitPattern: Int64(seg.fileOffset)),
                 fileSize: UInt64(bitPattern: Int64(seg.fileSize)),
-                maxProtection: Self.protText(seg.layout.maxprot),
-                initProtection: Self.protText(seg.layout.initprot),
+                maxProtection: Self.protText(UInt8(truncatingIfNeeded: seg.layout.maxprot)),
+                initProtection: Self.protText(UInt8(truncatingIfNeeded: seg.layout.initprot)),
                 flags: String(format: "0x%08X", seg.layout.flags)
             )
             info.segments.append(s)
@@ -136,15 +137,17 @@ final class MachOService {
         for symbol in machO.symbols {
             if si >= config.performanceMode.symbolLimit { break }
             let addr: UInt64
+            let ntype: UInt8
             if let n64 = symbol.nlist as? Nlist64 {
                 addr = n64.layout.n_value
+                ntype = n64.layout.n_type
             } else {
                 addr = 0
+                ntype = 0
             }
             let typeChar: String = {
-                let t = symbol.nlist.layout.n_type
-                if t & 0x0E == 0x0E { return "SECT" }
-                if t & 0x01 != 0 { return "EXT" }
+                if ntype & 0x0E == 0x0E { return "SECT" }
+                if ntype & 0x01 != 0 { return "EXT" }
                 return "ABS/UNDF"
             }()
             symbols.append(MachOSymbolInfo(id: si, name: symbol.name, demangled: symbol.demangledName, address: addr, type: typeChar))

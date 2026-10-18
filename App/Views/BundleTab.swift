@@ -60,7 +60,7 @@ struct BundleTab: View {
                         Text((entry.path as NSString).lastPathComponent)
                             .font(.footnote)
                             .lineLimit(1)
-                        Text("\(entry.category) · \(entry.isDirectory ? "目录" : DirectoryUtils.byteText(Int64(entry.size)))")
+                        Text("\(entry.category) · \(entry.isDirectory ? "目录" : DirectoryUtils.byteText(Int64(entry.uncompressedSize)))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -131,7 +131,10 @@ struct BundleTab: View {
                     let data = (try? Data(contentsOf: tmp)) ?? Data()
                     text = String(data: data.prefix(200_000), encoding: .utf8) ?? "（无法按文本解码）"
                 } else if lower.hasSuffix("info.plist") || entry.category == "配置" {
-                    text = (try? PropertyListSerialization.propertyList(from: (try? Data(contentsOf: tmp)) ?? Data(), options: [], format: nil).map { "\($0)" }) ?? ""
+                    if let data = try? Data(contentsOf: tmp),
+                       let obj = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) {
+                        text = "\(obj)"
+                    }
                 }
                 await MainActor.run {
                     previewText = text
@@ -240,7 +243,7 @@ struct MachOTab: View {
                             HStack {
                                 Text(cmd.name).font(.system(.caption, design: .monospaced).weight(.medium))
                                 Spacer()
-                                Text("\(cmd.size) B").font(.caption2).foregroundStyle(.secondary)
+                                Text("cmd #\(cmd.id + 1)").font(.caption2).foregroundStyle(.secondary)
                             }
                             if !cmd.detail.isEmpty {
                                 Text(cmd.detail).font(.system(.caption2, design: .monospaced)).foregroundStyle(DS.accent).textSelection(.enabled)

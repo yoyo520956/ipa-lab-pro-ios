@@ -21,6 +21,14 @@ final class DisasmService {
 
     init(config: AnalysisConfig) { self.config = config }
 
+    /// C char[N] 元组 → Swift String（capstone mnemonic/op_str）
+    static func cStringTuple<T>(_ tuple: T) -> String {
+        withUnsafeBytes(of: tuple) { raw in
+            let base = raw.baseAddress!.assumingMemoryBound(to: CChar.self)
+            return String(cString: base)
+        }
+    }
+
     /// 反汇编指定文件偏移区间
     func disassemble(at url: URL, request: DisasmRequest, isCancelled: @escaping () -> Bool = { false }) throws -> [InstructionEntry] {
         guard request.maxInstructions > 0 else { return [] }
@@ -49,8 +57,8 @@ final class DisasmService {
                 var insn: UnsafeMutablePointer<cs_insn>?
                 let count = cs_disasm(handle, base.advanced(by: offset), data.count - offset, request.startAddress, 1, &insn)
                 if count > 0, let i = insn {
-                    let m = String(cString: i.pointee.mnemonic)
-                    let ops = String(cString: i.pointee.op_str)
+                    let m = Self.cStringTuple(i.pointee.mnemonic)
+                    let ops = Self.cStringTuple(i.pointee.op_str)
                     let bytes = (0..<Int(i.pointee.size)).map { String(format: "%02x", i.pointee.bytes[$0]) }.joined(separator: " ")
                     out.append(InstructionEntry(id: idx, address: i.pointee.address, size: i.pointee.size, mnemonic: m, operands: ops, bytes: bytes))
                     offset += Int(i.pointee.size)
