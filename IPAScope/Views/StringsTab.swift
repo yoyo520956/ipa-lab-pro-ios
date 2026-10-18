@@ -42,6 +42,13 @@ struct StringsTab: View {
                     Label("网络接口", systemImage: "network")
                         .font(.caption.weight(.semibold))
                 }
+                .padding(.trailing, 8)
+                NavigationLink {
+                    JailbreakScanView(engine: engine)
+                } label: {
+                    Label("风控扫描", systemImage: "shield.lefthalf.filled")
+                        .font(.caption.weight(.semibold))
+                }
             }
             .padding(.horizontal, 14)
             .padding(.top, 8)
@@ -64,5 +71,22 @@ struct StringsTab: View {
                 .textSelection(.enabled)
                 .lineLimit(3)
         }
+    }
+}
+
+// MARK: - 字符串列表模型与过滤（v2.0 符号页重构后回归此处）
+
+struct StringItem: Identifiable, Hashable {
+    let id: Int
+    let text: String
+}
+
+enum Repos {
+    static func filtered(_ all: [String], _ query: String, cap: Int) -> [StringItem] {
+        var list = all
+        if !query.isEmpty {
+            list = list.filter { $0.localizedCaseInsensitiveContains(query) }
+        }
+        return list.prefix(cap).enumerated().map { StringItem(id: $0.offset, text: $0.element) }
     }
 }

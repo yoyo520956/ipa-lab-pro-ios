@@ -331,6 +331,68 @@ final class AnalysisEngine: ObservableObject {
         return stringByAddr[vm]
     }
 
+    // MARK: - 情报分析（完整性/越狱/权限/签名）
+
+    @Published var integrityProgress: (Int, Int) = (0, 0)
+
+    func arm64SliceData() -> Data? {
+        // thin 直接返回；fat → 定位 arm64 entry 切片
+        let bytes = [UInt8](binData)
+        guard bytes.count > 12 else { return nil }
+        let magic = UInt32(bytes[0]) | (UInt32(bytes[1]) << 8) | (UInt32(bytes[2]) << 16) | (UInt32(bytes[3]) << 24)
+        if magic == 0xfeedfacf { return binData }
+        guard magic == 0xcafebabe || magic == 0xbebafeca else { return nil }
+        let nfat = Int(bytes[4]) << 24 | Int(bytes[5]) << 16 | Int(bytes[6]) << 8 | Int(bytes[7])
+        for i in 0..<min(nfat, 16) {
+            let o = 8 + i * 20
+            guard o + 20 <= bytes.count else { break }
+            let cpu = UInt32(bytes[o]) << 24 | UInt32(bytes[o+1]) << 16 | UInt32(bytes[o+2]) << 8 | UInt32(bytes[o+3])
+            if cpu == 0x0100000C {
+                let off = Int(bytes[o+8]) << 24 | Int(bytes[o+9]) << 16 | Int(bytes[o+10]) << 8 | Int(bytes[o+11])
+                let size = Int(bytes[o+12]) << 24 | Int(bytes[o+13]) << 16 | Int(bytes[o+14]) << 8 | Int(bytes[o+15])
+                guard off + size <= binData.count else { return nil }
+                return binData.subdata(in: off..<(off + size))
+            }
+        }
+        return nil
+    }
+
+    func runIntegrityCheck() async -> [IntegrityItem] {
+        guard let z = zip else { return [] }
+        return await withCheckedContinuation { cont in
+            DispatchQueue.global().async {
+                let items = IntegrityCheck.run(entries: z.entries, reader: z) { done, total in
+                    Task { @MainActor in
+                        self.integrityProgress = (done, total)
+                    }
+                }
+                cont.resume(returning: items)
+            }
+        }
+    }
+
+    func jailbreakScan() -> [JBSignature] {
+        JailbreakScan.scan(result.cstrings)
+    }
+
+    func privacyProfile() -> [PrivacyPermission] {
+        var plistData: Data?
+        if let ip = zip?.entry(result.appFolder + "Info.plist") {
+            plistData = try? zip?.data(for: ip)
+        }
+        return PrivacyProfile.analyze(infoPlistData: plistData,
+                                      strings: result.cstrings, info: result.info)
+    }
+
+    func codeSignature() -> CodeSigInfo {
+        guard let slice = arm64SliceData() else {
+            var i = CodeSigInfo()
+            i.errors.append("无法定位 arm64 slice")
+            return i
+        }
+        return CodeSigParser.parse(slice: [UInt8](slice))
+    }
+
     // MARK: - 导出（Documents/exports/）
 
     nonisolated static func exportsDir() -> URL {

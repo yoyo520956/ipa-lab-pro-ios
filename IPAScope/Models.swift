@@ -9,6 +9,7 @@ struct ZipEntry: Identifiable, Hashable {
     let packed: UInt64       // 压缩后
     let method: UInt16       // 0=store 8=deflate
     let offset: UInt64       // local header 偏移
+    let crc: UInt32          // 目录登记的 CRC32
     var isDirectory: Bool { path.hasSuffix("/") }
     var fileName: String {
         (path as NSString).lastPathComponent

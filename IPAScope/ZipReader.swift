@@ -58,6 +58,7 @@ final class ZipReader {
             let method = Self.u16(cd, pos + 10)
             let packed = UInt64(Self.u32(cd, pos + 20))
             let size = UInt64(Self.u32(cd, pos + 24))
+            let crc = Self.u32(cd, pos + 16)
             let nameLen = Int(Self.u16(cd, pos + 28))
             let extraLen = Int(Self.u16(cd, pos + 30))
             let commentLen = Int(Self.u16(cd, pos + 32))
@@ -65,7 +66,7 @@ final class ZipReader {
             guard pos + 46 + nameLen <= cd.count else { break }
             let name = String(bytes: cd[(pos+46)..<(pos+46+nameLen)], encoding: .utf8) ?? ""
             let entry = ZipEntry(id: idx, path: name, size: size, packed: packed,
-                                 method: method, offset: localOff)
+                                 method: method, offset: localOff, crc: crc)
             entries.append(entry)
             entryByPath[name] = entry
             totalUncompressed += size

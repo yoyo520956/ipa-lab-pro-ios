@@ -13,6 +13,7 @@ struct OverviewTab: View {
                     libraryCard
                     statusCard
                     if engine.phase == .done {
+                        toolsCard
                         infoCard
                         summaryCard
                         warningCard
@@ -25,6 +26,46 @@ struct OverviewTab: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear { engine.refreshImportList() }
         }
+    }
+
+    // MARK: - 深度分析工具
+
+    private var toolsCard: some View {
+        SectionCard(title: "深度分析工具", icon: "wrench.and.screwdriver.fill") {
+            VStack(spacing: 8) {
+                toolLink("完整性校验", "checkmark.seal", "ZIP 全条目 CRC32 实算", .blue) {
+                    IntegrityView(engine: engine)
+                }
+                toolLink("越狱/风控扫描", "shield.lefthalf.filled", "越狱检测/Hook框架/调试特征", .green) {
+                    JailbreakScanView(engine: engine)
+                }
+                toolLink("隐私权限画像", "hand.raised", "权限申请 + 代码证据", .orange) {
+                    PrivacyProfileView(engine: engine)
+                }
+                toolLink("签名深度解析", "signature", "CodeDirectory + 真实 Entitlements", .purple) {
+                    CodeSigView(engine: engine)
+                }
+            }
+        }
+    }
+
+    private func toolLink<Content: View>(_ title: String, _ icon: String, _ sub: String,
+                                         _ color: Color, @ViewBuilder dest: () -> Content) -> some View {
+        NavigationLink { dest() } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+                    .font(.title3)
+                    .frame(width: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.footnote.weight(.semibold))
+                    Text(sub).font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 卡片
