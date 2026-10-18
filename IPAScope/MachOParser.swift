@@ -82,15 +82,16 @@ final class MachOParser {
             let cmd = ZipReader.u32(b, p)
             let cmdsize = Int(ZipReader.u32(b, p + 4))
             guard cmdsize >= 8, p + cmdsize <= b.count else { break }
-            switch cmd {
+            let base = cmd & 0x7FFFFFFF   // 弱化命令带高位（如 0x80000018 = LC_LOAD_WEAK_DYLIB）
+            switch base {
             case 0x19: // LC_SEGMENT_64
                 let seg = readSegment(b, p, &secIdx, segIdx)
                 segments.append(seg)
                 segIdx += 1
             case 0x2:  // LC_SYMTAB
                 readSymtab(b, p)
-            case 0xc, 0xd, 0x18: // LC_LOAD_DYLIB / ID / WEAK
-                let weak = (cmd == 0x18)
+            case 0xc, 0xd, 0x18: // LC_LOAD_DYLIB / ID / WEAK（含高位变体）
+                let weak = (base == 0x18)
                 readDylib(b, p, weak)
             case 0x2c: // LC_ENCRYPTION_INFO_64
                 summary.encrypted = Int(ZipReader.u32(b, p + 16))

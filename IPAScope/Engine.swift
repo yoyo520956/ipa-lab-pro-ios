@@ -137,7 +137,10 @@ final class AnalysisEngine: ObservableObject {
             guard let binEntry = zr.entry(binPath) else {
                 throw IPAError.noBinary("\(binPath)（查 Info.plist 的 CFBundleExecutable）")
             }
-            binData = try zr.data(for: binEntry)
+            binData = try zr.data(for: binEntry, maxBytes: 512 * 1024 * 1024)
+            guard binData.count == Int(binEntry.size) else {
+                throw IPAError.notZip("主二进制解压不完整（\(binData.count)/\(binEntry.size)）")
+            }
             result.summary.fileSize = binEntry.size
 
             // Mach-O

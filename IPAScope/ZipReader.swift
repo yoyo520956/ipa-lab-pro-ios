@@ -84,7 +84,7 @@ final class ZipReader {
         }
         // local header：30 字节 + 文件名 + 扩展区（长度可能与 central 不同，必须现场读）
         try fh.seek(toOffset: entry.offset)
-        let lh = [UInt8](fh.readData(ofLength: 30))
+        let lh = [UInt8](try readFull(fh, 30))
         guard lh.count == 30, lh[0] == 0x50, lh[1] == 0x4b, lh[2] == 0x03, lh[3] == 0x04 else {
             throw IPAError.notZip("局部头损坏: \(entry.path)")
         }
@@ -92,15 +92,39 @@ final class ZipReader {
         let extraLen = Int(Self.u16(lh, 28))
         let dataOff = entry.offset + 30 + UInt64(nameLen) + UInt64(extraLen)
         try fh.seek(toOffset: dataOff)
-        let comp = fh.readData(ofLength: Int(entry.packed))
+        let comp = try readFull(fh, Int(entry.packed))
 
         if entry.method == 0 {
+            guard comp.count == Int(entry.size) else {
+                throw IPAError.notZip("store 数据不完整: \(entry.path)（\(comp.count)/\(entry.size)）")
+            }
             return comp
         }
         if entry.method == 8 {
-            return try Self.inflate(comp, outSize: Int(entry.size))
+            let out = try Self.inflate(comp, outSize: Int(entry.size))
+            guard out.count == Int(entry.size) else {
+                throw IPAError.notZip("解压不完整: \(entry.path)（\(out.count)/\(entry.size)）——文件可能损坏")
+            }
+            return out
         }
         throw IPAError.unsupported("压缩方法 \(entry.method) 不支持（仅 store/deflate）: \(entry.path)")
+    }
+
+    /// FileHandle 读取可能短读——循环读满为止
+    private func readFull(_ handle: FileHandle, _ count: Int) throws -> Data {
+        var out = Data(capacity: count)
+        var tries = 0
+        while out.count < count {
+            let chunk = handle.readData(ofLength: count - out.count)
+            if chunk.isEmpty { break }
+            out.append(chunk)
+            tries += 1
+            if tries > 100_000 { break }
+        }
+        guard out.count == count else {
+            throw IPAError.notZip("文件读取不完整（\(out.count)/\(count)）")
+        }
+        return out
     }
 
     func entry(_ path: String) -> ZipEntry? { entryByPath[path] }
@@ -110,18 +134,36 @@ final class ZipReader {
     }
 
     static func inflate(_ src: Data, outSize: Int) throws -> Data {
+        // 流式解压（compression_stream）：比 decode_buffer 可靠，不会静默提前返回
         var dst = Data(count: outSize)
-        let ok = dst.withUnsafeMutableBytes { db -> Int in
-            src.withUnsafeBytes { sb -> Int in
-                guard let sp = sb.bindMemory(to: UInt8.self).baseAddress,
-                      let dp = db.bindMemory(to: UInt8.self).baseAddress else { return -1 }
-                return compression_decode_buffer(dp, outSize, sp, src.count,
-                                                 nil, COMPRESSION_ZLIB)
+        var produced = 0
+        let status = dst.withUnsafeMutableBytes { (db: UnsafeMutableRawBufferPointer) -> compression_status in
+            src.withUnsafeBytes { (sb: UnsafeRawBufferPointer) -> compression_status in
+                guard let dp = db.bindMemory(to: UInt8.self).baseAddress,
+                      let sp = sb.bindMemory(to: UInt8.self).baseAddress else { return COMPRESSION_STATUS_ERROR }
+                var stream = compression_stream(dst_ptr: dp, dst_size: outSize,
+                                                src_ptr: sp, src_size: src.count, state: nil)
+                guard compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else {
+                    return COMPRESSION_STATUS_ERROR
+                }
+                defer { compression_stream_destroy(&stream) }
+                let finalize = Int32(COMPRESSION_STREAM_FINALIZE.rawValue)
+                var st: compression_status = COMPRESSION_STATUS_OK
+                while true {
+                    st = compression_stream_process(&stream, finalize)
+                    if st == COMPRESSION_STATUS_ERROR { return COMPRESSION_STATUS_ERROR }
+                    if st == COMPRESSION_STATUS_END { break }
+                    if stream.dst_size == 0 { break }   // 输出缓冲已满
+                }
+                produced = outSize - Int(stream.dst_size)
+                return st
             }
         }
-        guard ok >= 0 else { throw IPAError.unsupported("deflate 解压失败") }
-        if ok < outSize {
-            dst.removeSubrange(ok..<outSize)
+        guard status == COMPRESSION_STATUS_END else {
+            throw IPAError.unsupported("deflate 解压失败（流式）")
+        }
+        guard produced == outSize else {
+            throw IPAError.notZip("解压产出不足（\(produced)/\(outSize)）")
         }
         return dst
     }
