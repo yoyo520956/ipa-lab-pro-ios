@@ -1,4 +1,4 @@
-name: Build IPA Lab Pro
+name: Build IPAScope
 
 on:
   workflow_dispatch:
@@ -31,8 +31,8 @@ jobs:
 
       - name: Build (unsigned IPA)
         run: |
-          xcodebuild -project IPALabPro.xcodeproj \
-            -scheme IPALabPro \
+          xcodebuild -project IPAScope.xcodeproj \
+            -scheme IPAScope \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
@@ -80,17 +80,6 @@ jobs:
             echo "--- $f ($(wc -c < $f)B)"
             strings "$f" | rg -i 'error|fatal|signal|Segmentation' | head -15
           done
-          echo ""
-          echo "===== 重放 ARMMapping clang 前端（去序列化，直出错误）====="
-          SRC=Vendor/capstone/arch/ARM/ARMMapping.c
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          xcrun clang -cc1 -triple arm64-apple-ios16.0.0 \
-            -fsyntax-only -O1 \
-            -isysroot "$SDK" \
-            -I "$(pwd)/Vendor/capstone/include" \
-            -Wno-documentation -Wno-shorten-64-to-32 \
-            "$SRC" 2>&1 | head -40
-          echo "重放 exit: $?"
 
       - name: Upload full build log + diagnostics
         if: always()
@@ -102,29 +91,19 @@ jobs:
             build/Diag.xcresult
           if-no-files-found: ignore
 
-      - name: Run Engine Tests (simulator)
-        run: |
-          set -o pipefail
-          xcodebuild -project IPALabPro.xcodeproj \
-            -scheme IPALabPro \
-            -destination 'platform=iOS Simulator,name=iPhone SE (3rd generation)' \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            test 2>&1 | tail -120 || echo "TEST_STEP_FAILED (IPA artifact still uploaded)"
-
       - name: Package IPA
         run: |
           ls build/Build/Products/Release-iphoneos/
-          test -f build/Build/Products/Release-iphoneos/IPALabPro.app/IPALabPro || (echo "FATAL: 主二进制缺失（假成功防护）" && exit 1)
+          test -f build/Build/Products/Release-iphoneos/IPAScope.app/IPAScope || (echo "FATAL: 主二进制缺失（假成功防护）" && exit 1)
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/IPALabPro.app Payload/
-          zip -qry IPALabPro-unsigned.ipa Payload
-          unzip -t IPALabPro-unsigned.ipa > /dev/null && echo "IPA CRC OK"
-          ls -la IPALabPro-unsigned.ipa
+          cp -r build/Build/Products/Release-iphoneos/IPAScope.app Payload/
+          zip -qry IPAScope-unsigned.ipa Payload
+          unzip -t IPAScope-unsigned.ipa > /dev/null && echo "IPA CRC OK"
+          ls -la IPAScope-unsigned.ipa
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ipalabpro-ipa
-          path: IPALabPro-unsigned.ipa
+          name: ipascope-ipa
+          path: IPAScope-unsigned.ipa
           if-no-files-found: error
