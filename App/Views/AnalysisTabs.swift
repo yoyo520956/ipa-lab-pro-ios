@@ -65,7 +65,7 @@ struct StringsTab: View {
 // MARK: - 反汇编页
 
 /// 伪代码行模型：Identifiable 包装，使 ForEach 走「Identifiable 元素」无歧义重载
-private struct PseudoLine: Identifiable {
+private struct PseudoLine: Identifiable, Hashable {
     let id: Int
     let text: String
     let address: UInt64?
@@ -121,7 +121,7 @@ struct DisasmTab: View {
                         if showPseudocode {
                             let pseudoLines = DisasmService.pseudocode(for: instructions)
                             let lineModels = Self.makePseudoLines(pseudoLines, instructions)
-                            ForEach(lineModels, id: \.id) { lm in
+                            ForEach(lineModels, id: \.self) { lm in
                                 Text(lm.text)
                                     .font(.system(.caption2, design: .monospaced))
                                     .textSelection(.enabled)

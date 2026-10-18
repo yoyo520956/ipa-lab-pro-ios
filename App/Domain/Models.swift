@@ -166,7 +166,7 @@ struct AnalysisCheckpoint: Codable {
 
 // MARK: - 文件树条目
 
-struct ArchiveEntry: Identifiable, Codable, Equatable {
+struct ArchiveEntry: Identifiable, Codable, Equatable, Hashable {
     var id: String { path }
     var path: String
     var size: UInt64
