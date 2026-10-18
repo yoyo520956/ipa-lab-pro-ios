@@ -14,10 +14,10 @@ jobs:
 
       - name: Setup Xcode
         run: |
-          if [ -d /Applications/Xcode_26.2.app ]; then
-            sudo xcode-select -s /Applications/Xcode_26.2.app
+          if [ -d /Applications/Xcode_26.6.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.6.app
           else
-            echo "Xcode_26.2.app not found; falling back to runner default"
+            echo "Xcode_26.6.app not found; falling back to runner default"
           fi
           xcodebuild -version
 
