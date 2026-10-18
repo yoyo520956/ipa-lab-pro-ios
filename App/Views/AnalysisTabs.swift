@@ -121,7 +121,7 @@ struct DisasmTab: View {
                         if showPseudocode {
                             let pseudoLines = DisasmService.pseudocode(for: instructions)
                             let lineModels = Self.makePseudoLines(pseudoLines, instructions)
-                            ForEach(lineModels) { lm in
+                            ForEach(lineModels, id: \.id) { lm in
                                 Text(lm.text)
                                     .font(.system(.caption2, design: .monospaced))
                                     .textSelection(.enabled)

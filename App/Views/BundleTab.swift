@@ -55,7 +55,7 @@ struct BundleTab: View {
             }
 
             List {
-                ForEach(visibleCapped) { entry in
+                ForEach(visibleCapped, id: \.path) { entry in
                     HStack(spacing: 10) {
                         Image(systemName: icon(for: entry))
                             .foregroundStyle(DS.accent)
