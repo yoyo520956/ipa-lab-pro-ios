@@ -3,6 +3,7 @@ import Foundation
 // MARK: - 伪代码近似生成器（汇编 → 类 C 片段）
 // 规则引擎：跟踪寄存器赋值 + 模式翻译。输出为「可读化近似」——不是真正的反编译。
 
+@MainActor
 enum Pseudocoder {
 
     struct Result {

@@ -438,8 +438,8 @@ enum ObjCTypeEnc {
             }
             if c == "{" || c == "(" {
                 // 结构体/联合：到匹配括号
-                let open = c == "{" ? "{" : "("
-                let close = c == "{" ? "}" : ")"
+                let open: Character = c == "{" ? "{" : "("
+                let close: Character = c == "{" ? "}" : ")"
                 var depth = 0
                 var t = ""
                 while pos < chars.count {
