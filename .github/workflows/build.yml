@@ -31,15 +31,90 @@ jobs:
 
       - name: Build (unsigned IPA)
         run: |
-          set -o pipefail
           xcodebuild -project IPALabPro.xcodeproj \
             -scheme IPALabPro \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            -resultBundlePath build/Diag.xcresult \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            IDEBuildOperationMaxNumberOfConcurrentCompileTasks=2 \
-            build 2>&1 | tail -300
+            IDEBuildOperationMaxNumberOfConcurrentCompileTasks=1 \
+            build > /tmp/full_build.log 2>&1
+          EX=$?
+          echo "xcodebuild exit code: $EX"
+          tail -300 /tmp/full_build.log
+          exit $EX
+
+      - name: Dump Diagnostics (failure forensics)
+        if: failure()
+        run: |
+          set +e
+          echo "===== 环境快照 ====="
+          sysctl hw.memsize hw.ncpu 2>/dev/null
+          vm_stat | head -6
+          df -h / | tail -2
+          echo ""
+          echo "===== 完整日志中被 tail 截掉的中段错误行 ====="
+          rg -n 'error:' /tmp/full_build.log | head -40 || echo "（完整日志中也无 error: 行）"
+          echo ""
+          echo "===== xcresulttool 官方结果包解析 ====="
+          if [ -d build/Diag.xcresult ]; then
+            xcrun xcresulttool get --legacy --format json --path build/Diag.xcresult > /tmp/xc_legacy.json 2>/tmp/xc_err.txt
+            if [ -s /tmp/xc_legacy.json ]; then
+              python3 -c "
+import json
+d = json.load(open('/tmp/xc_legacy.json'))
+def walk(o):
+    if isinstance(o, dict):
+        t = o.get('_type', {}).get('_name', '')
+        if 'Issue' in t or 'Diagnostic' in t or 'Error' in t:
+            print(json.dumps(o, ensure_ascii=False)[:900])
+        for v in o.values(): walk(v)
+    elif isinstance(o, list):
+        for v in o: walk(v)
+walk(d)
+" | head -60
+            else
+              echo "legacy 接口无输出: $(cat /tmp/xc_err.txt | head -2)"
+              xcrun xcresulttool get test-results summary --path build/Diag.xcresult 2>&1 | head -20
+              xcrun xcresulttool --help 2>&1 | head -20
+            fi
+          else
+            echo "无结果包生成"
+          fi
+          echo ""
+          echo "===== .dia 序列化诊断文本（strings 提取）====="
+          find build -name "*.dia" -size +0 2>/dev/null | head -8 | while read f; do
+            echo "--- $f ($(wc -c < $f)B)"
+            strings "$f" | rg -i 'error|warning|fatal|signal' | head -15
+          done
+          echo ""
+          echo "===== 重放 ARMMapping clang 前端（去序列化，直出错误）====="
+          # 找到构建系统留下的 response file，手动重放单个前端命令（不带 -serialize-diagnostic-file）
+          RESP=$(find build -name "*common-args.resp" | head -1)
+          if [ -n "$RESP" ]; then
+            echo "response file: $RESP"
+            # 手动对 ARMMapping.c 跑 clang -cc1（-O1 + 完整前端参数从 .resp 取），错误直接输出
+            SRC=Vendor/capstone/arch/ARM/ARMMapping.c
+            SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+            xcrun clang -cc1 -triple arm64-apple-ios16.0.0 \
+              -fsyntax-only -O1 \
+              -isysroot "$SDK" \
+              -I "$(pwd)/Vendor/capstone/include" \
+              -Wno-documentation -Wno-shorten-64-to-32 \
+              "$SRC" 2>&1 | head -40
+            echo "重放 exit: $?"
+          fi
+
+      - name: Upload full build log + diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: |
+            /tmp/full_build.log
+            build/Diag.xcresult
+          if-no-files-found: ignore
 
       - name: Run Engine Tests (simulator)
         run: |
