@@ -56,7 +56,7 @@ jobs:
           df -h / | tail -2
           echo ""
           echo "===== 完整日志中的全部 error 行（防 tail 截断）====="
-          rg -n 'error:' /tmp/full_build.log | head -40 || echo "（完整日志中也无 error: 行）"
+          grep -n 'error:' /tmp/full_build.log | head -40 || echo "（完整日志中也无 error: 行）"
           echo ""
           echo "===== xcresulttool 官方结果包解析 ====="
           if [ -d build/Diag.xcresult ]; then
@@ -79,7 +79,7 @@ jobs:
           echo "===== .dia 序列化诊断文本（strings 提取）====="
           find build -name "*.dia" -size +0 2>/dev/null | head -8 | while read f; do
             echo "--- $f ($(wc -c < $f)B)"
-            strings "$f" | rg -i 'error|fatal|signal|Segmentation' | head -15
+            strings "$f" | grep -i 'error|fatal|signal|Segmentation' | head -15
           done
 
       - name: Upload full build log + diagnostics

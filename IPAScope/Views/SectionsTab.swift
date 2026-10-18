@@ -91,7 +91,7 @@ struct SectionDetailSheet: View {
             .navigationTitle(section.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .trailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
                 }
             }
