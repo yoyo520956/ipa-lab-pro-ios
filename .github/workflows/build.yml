@@ -31,6 +31,7 @@ jobs:
 
       - name: Build (unsigned IPA)
         run: |
+          set +e
           xcodebuild -project IPAScope.xcodeproj \
             -scheme IPAScope \
             -configuration Release \

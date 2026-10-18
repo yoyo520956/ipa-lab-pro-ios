@@ -4,7 +4,7 @@ import Foundation
 // fat 头 → arm64 slice → load commands → 段/节表、符号表、依赖库、加密状态、UUID、构建版本。
 // 输入是已解压的主二进制 Data。
 
-struct MachOParser {
+final class MachOParser {
     static let MH_EXECUTE: UInt32 = 0x2
 
     private let bytes: [UInt8]
