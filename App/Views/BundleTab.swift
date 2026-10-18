@@ -31,6 +31,9 @@ struct BundleTab: View {
         return list
     }
 
+    /// 预具现化数组（普通表达式完成 Array() 转换，隔离泛型参数位)
+    var visibleCapped: [ArchiveEntry] { Array(visible.prefix(3000)) }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -51,26 +54,28 @@ struct BundleTab: View {
                 Text(e).font(.caption).foregroundStyle(DS.red).padding(.horizontal)
             }
 
-            List(visible.prefix(3000), id: \.path) { entry in
-                HStack(spacing: 10) {
-                    Image(systemName: icon(for: entry))
-                        .foregroundStyle(DS.accent)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text((entry.path as NSString).lastPathComponent)
-                            .font(.footnote)
-                            .lineLimit(1)
-                        Text("\(entry.category) · \(entry.isDirectory ? "目录" : DirectoryUtils.byteText(Int64(entry.uncompressedSize)))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if !entry.isDirectory {
-                        Button("提取") {
-                            extractAndPreview(entry)
+            List {
+                ForEach(visibleCapped) { entry in
+                    HStack(spacing: 10) {
+                        Image(systemName: icon(for: entry))
+                            .foregroundStyle(DS.accent)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text((entry.path as NSString).lastPathComponent)
+                                .font(.footnote)
+                                .lineLimit(1)
+                            Text("\(entry.category) · \(entry.isDirectory ? "目录" : DirectoryUtils.byteText(Int64(entry.uncompressedSize)))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.caption)
-                        .buttonStyle(.bordered)
+                        Spacer()
+                        if !entry.isDirectory {
+                            Button("提取") {
+                                extractAndPreview(entry)
+                            }
+                            .font(.caption)
+                            .buttonStyle(.bordered)
+                        }
                     }
                 }
             }

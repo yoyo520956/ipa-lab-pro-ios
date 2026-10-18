@@ -64,6 +64,13 @@ struct StringsTab: View {
 
 // MARK: - 反汇编页
 
+/// 伪代码行模型：Identifiable 包装，使 ForEach 走「Identifiable 元素」无歧义重载
+private struct PseudoLine: Identifiable {
+    let id: Int
+    let text: String
+    let address: UInt64?
+}
+
 struct DisasmTab: View {
     @ObservedObject var engine: AnalysisEngine
     @State private var selectedSymbol: MachOSymbolInfo?
@@ -113,12 +120,13 @@ struct DisasmTab: View {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         if showPseudocode {
                             let pseudoLines = DisasmService.pseudocode(for: instructions)
-                            ForEach(pseudoLines.indices, id: \.self) { index in
-                                Text(pseudoLines[index])
+                            let lineModels = Self.makePseudoLines(pseudoLines, instructions)
+                            ForEach(lineModels) { lm in
+                                Text(lm.text)
                                     .font(.system(.caption2, design: .monospaced))
                                     .textSelection(.enabled)
-                                if index < instructions.count {
-                                    Text("0x\(String(instructions[index].address, radix: 16))").font(.system(.micro, design: .monospaced)).foregroundStyle(.tertiary)
+                                if let addr = lm.address {
+                                    Text("0x\(String(addr, radix: 16))").font(.system(.micro, design: .monospaced)).foregroundStyle(.tertiary)
                                 }
                             }
                         } else {
@@ -160,6 +168,17 @@ struct DisasmTab: View {
                 .disabled(running || engine.machOInfo == nil)
             }
         }
+    }
+
+    /// 预构建行模型：普通函数上下文完成全部类型推断，隔离 ViewBuilder 泛型环境
+    private static func makePseudoLines(_ lines: [String], _ insns: [InstructionEntry]) -> [PseudoLine] {
+        var out: [PseudoLine] = []
+        out.reserveCapacity(lines.count)
+        for (i, line) in lines.enumerated() {
+            let addr: UInt64? = i < insns.count ? insns[i].address : nil
+            out.append(PseudoLine(id: i, text: line, address: addr))
+        }
+        return out
     }
 
     @MainActor
