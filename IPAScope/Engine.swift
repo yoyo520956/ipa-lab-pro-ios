@@ -101,11 +101,26 @@ final class AnalysisEngine: ObservableObject {
             result.entries = zr.entries
             result.totalUncompressed = zr.totalUncompressed
 
-            // 定位 Payload/*.app/
+            // 定位 Payload/*.app/（取一级 .app 目录，用 Info.plist 验证；大小写兼容）
             phase = .working("定位 App 包…")
-            let appEntries = zr.entries.filter { $0.path.hasPrefix("Payload/") && !$0.isDirectory }
-            guard !appEntries.isEmpty else { throw IPAError.notZip("包内无 Payload/ 目录") }
-            let appFolder = "Payload/" + ((appEntries[0].path as NSString).deletingLastPathComponent) + "/"
+            var appFolder = ""
+            var fallback = ""
+            for e in zr.entries {
+                guard !e.isDirectory else { continue }
+                let lower = e.path.lowercased()
+                guard lower.hasPrefix("payload/") else { continue }
+                let rest = e.path.dropFirst(8)   // "Payload/" 长度
+                let comps = rest.split(separator: "/", omittingEmptySubsequences: true)
+                guard comps.count >= 2, comps[0].lowercased().hasSuffix(".app") else { continue }
+                let candidate = "Payload/" + comps[0] + "/"
+                if zr.entry(candidate + "Info.plist") != nil {
+                    appFolder = candidate
+                    break
+                }
+                if fallback.isEmpty { fallback = candidate }
+            }
+            if appFolder.isEmpty { appFolder = fallback }
+            guard !appFolder.isEmpty else { throw IPAError.notZip("包内未找到 Payload/*.app 目录") }
             result.appFolder = appFolder
 
             // Info.plist
